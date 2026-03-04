@@ -175,15 +175,15 @@ def test_add_wsgi_middleware(spec):
     mock.assert_called_once()
 
 
-class TestRouteResolvedCallback:
-    """Tests for the on_route_resolved callback mechanism."""
+class TestRoutingHooks:
+    """Tests for the after_routing_resolution hook mechanism."""
 
-    def test_callback_receives_route_info(self, spec, app_class):
-        """Test that registered callbacks receive route path and operation_id."""
+    def test_hook_receives_route_info(self, spec, app_class):
+        """Test that registered hooks receive route path and operation_id."""
         from connexion.middleware.routing import RoutingOperation
 
-        # Clear any existing callbacks from other tests
-        RoutingOperation.clear_route_callbacks()
+        # Clear any existing hooks from other tests
+        RoutingOperation.clear_routing_hooks()
 
         captured = {}
 
@@ -192,7 +192,7 @@ class TestRouteResolvedCallback:
             captured["operation_id"] = operation_id
             captured["method"] = scope.get("method")
 
-        RoutingOperation.on_route_resolved(capture_route_info)
+        RoutingOperation.after_routing_resolution(capture_route_info)
 
         try:
             app = build_app_from_fixture("simple", app_class=app_class, spec_file=spec)
@@ -203,24 +203,24 @@ class TestRouteResolvedCallback:
             assert captured["operation_id"] == "fakeapi.hello.post_greeting"  # nosec B101
             assert captured["method"] == "POST"  # nosec B101
         finally:
-            RoutingOperation.clear_route_callbacks()
+            RoutingOperation.clear_routing_hooks()
 
-    def test_multiple_callbacks(self, spec, app_class):
-        """Test that multiple callbacks are all invoked."""
+    def test_multiple_hooks(self, spec, app_class):
+        """Test that multiple hooks are all invoked."""
         from connexion.middleware.routing import RoutingOperation
 
-        RoutingOperation.clear_route_callbacks()
+        RoutingOperation.clear_routing_hooks()
 
         call_count = {"first": 0, "second": 0}
 
-        def first_callback(route_path, operation_id, scope):
+        def first_hook(route_path, operation_id, scope):
             call_count["first"] += 1
 
-        def second_callback(route_path, operation_id, scope):
+        def second_hook(route_path, operation_id, scope):
             call_count["second"] += 1
 
-        RoutingOperation.on_route_resolved(first_callback)
-        RoutingOperation.on_route_resolved(second_callback)
+        RoutingOperation.after_routing_resolution(first_hook)
+        RoutingOperation.after_routing_resolution(second_hook)
 
         try:
             app = build_app_from_fixture("simple", app_class=app_class, spec_file=spec)
@@ -230,24 +230,24 @@ class TestRouteResolvedCallback:
             assert call_count["first"] == 1  # nosec B101
             assert call_count["second"] == 1  # nosec B101
         finally:
-            RoutingOperation.clear_route_callbacks()
+            RoutingOperation.clear_routing_hooks()
 
-    def test_callback_error_does_not_break_request(self, spec, app_class):
-        """Test that callback errors don't break request processing."""
+    def test_hook_error_does_not_break_request(self, spec, app_class):
+        """Test that hook errors don't break request processing."""
         from connexion.middleware.routing import RoutingOperation
 
-        RoutingOperation.clear_route_callbacks()
+        RoutingOperation.clear_routing_hooks()
 
-        def failing_callback(route_path, operation_id, scope):
+        def failing_hook(route_path, operation_id, scope):
             raise RuntimeError("Intentional error")
 
-        RoutingOperation.on_route_resolved(failing_callback)
+        RoutingOperation.after_routing_resolution(failing_hook)
 
         try:
             app = build_app_from_fixture("simple", app_class=app_class, spec_file=spec)
             app_client = app.test_client()
-            # Request should still succeed despite callback error
+            # Request should still succeed despite hook error
             response = app_client.post("/v1.0/greeting/robbe")
             assert response.status_code == 200  # nosec B101
         finally:
-            RoutingOperation.clear_route_callbacks()
+            RoutingOperation.clear_routing_hooks()
