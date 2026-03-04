@@ -173,3 +173,81 @@ def test_add_wsgi_middleware(spec):
     app_client.post("/v1.0/greeting/robbe")
 
     mock.assert_called_once()
+
+
+class TestRouteResolvedCallback:
+    """Tests for the on_route_resolved callback mechanism."""
+
+    def test_callback_receives_route_info(self, spec, app_class):
+        """Test that registered callbacks receive route path and operation_id."""
+        from connexion.middleware.routing import RoutingOperation
+
+        # Clear any existing callbacks from other tests
+        RoutingOperation.clear_route_callbacks()
+
+        captured = {}
+
+        def capture_route_info(route_path, operation_id, scope):
+            captured["route_path"] = route_path
+            captured["operation_id"] = operation_id
+            captured["method"] = scope.get("method")
+
+        RoutingOperation.on_route_resolved(capture_route_info)
+
+        try:
+            app = build_app_from_fixture("simple", app_class=app_class, spec_file=spec)
+            app_client = app.test_client()
+            app_client.post("/v1.0/greeting/robbe")
+
+            assert captured["route_path"] == "/v1.0/greeting/{name}"
+            assert captured["operation_id"] == "fakeapi.hello.post_greeting"
+            assert captured["method"] == "POST"
+        finally:
+            RoutingOperation.clear_route_callbacks()
+
+    def test_multiple_callbacks(self, spec, app_class):
+        """Test that multiple callbacks are all invoked."""
+        from connexion.middleware.routing import RoutingOperation
+
+        RoutingOperation.clear_route_callbacks()
+
+        call_count = {"first": 0, "second": 0}
+
+        def first_callback(route_path, operation_id, scope):
+            call_count["first"] += 1
+
+        def second_callback(route_path, operation_id, scope):
+            call_count["second"] += 1
+
+        RoutingOperation.on_route_resolved(first_callback)
+        RoutingOperation.on_route_resolved(second_callback)
+
+        try:
+            app = build_app_from_fixture("simple", app_class=app_class, spec_file=spec)
+            app_client = app.test_client()
+            app_client.post("/v1.0/greeting/robbe")
+
+            assert call_count["first"] == 1
+            assert call_count["second"] == 1
+        finally:
+            RoutingOperation.clear_route_callbacks()
+
+    def test_callback_error_does_not_break_request(self, spec, app_class):
+        """Test that callback errors don't break request processing."""
+        from connexion.middleware.routing import RoutingOperation
+
+        RoutingOperation.clear_route_callbacks()
+
+        def failing_callback(route_path, operation_id, scope):
+            raise RuntimeError("Intentional error")
+
+        RoutingOperation.on_route_resolved(failing_callback)
+
+        try:
+            app = build_app_from_fixture("simple", app_class=app_class, spec_file=spec)
+            app_client = app.test_client()
+            # Request should still succeed despite callback error
+            response = app_client.post("/v1.0/greeting/robbe")
+            assert response.status_code == 200
+        finally:
+            RoutingOperation.clear_route_callbacks()
