@@ -21,17 +21,17 @@ logger = logging.getLogger(__name__)
 
 _scope: ContextVar[dict] = ContextVar("SCOPE")
 
-# Type for route resolution callbacks
+# Type for routing hook callbacks
 # Callback receives: (route_path, operation_id, scope)
-RouteResolvedCallback = t.Callable[[str, t.Optional[str], Scope], None]
+RoutingHook = t.Callable[[str, t.Optional[str], Scope], None]
 
 
 class RoutingOperation:
     """Represents a routed operation that attaches routing context to the ASGI scope."""
 
-    # Class-level list of callbacks invoked when a route is resolved.
-    # Use on_route_resolved() to register callbacks.
-    _route_callbacks: t.ClassVar[t.List[RouteResolvedCallback]] = []
+    # Class-level list of hooks invoked after routing resolution completes.
+    # Use after_routing_resolution() to register hooks.
+    _routing_hooks: t.ClassVar[t.List[RoutingHook]] = []
 
     def __init__(
         self,
@@ -48,30 +48,36 @@ class RoutingOperation:
         return cls(operation.operation_id, next_app, path=operation.path)
 
     @classmethod
-    def on_route_resolved(cls, callback: RouteResolvedCallback) -> None:
-        """Register a callback to be invoked when a route is resolved.
+    def after_routing_resolution(cls, hook: RoutingHook) -> None:
+        """Register a hook to run after routing resolution, before the operation is called.
 
-        The callback receives (route_path, operation_id, scope) and can be used
-        to integrate with observability tools like OpenTelemetry without adding
-        direct dependencies to Connexion.
+        This hook runs after Connexion determines which operation handles the request,
+        but before the operation function is invoked. Use cases include:
+
+        - Observability: Set span attributes, update trace names (OTEL, Datadog, etc.)
+        - Logging: Log route information with structured context
+        - Metrics: Record routing metrics or counters
+        - Auditing: Track which operations are called
+
+        The hook receives:
+            - route_path: The OpenAPI path template (e.g., "/v1/users/{user_id}")
+            - operation_id: The operation identifier from the OpenAPI spec
+            - scope: The ASGI scope dict with request information
 
         Example:
             from connexion.middleware.routing import RoutingOperation
-            from opentelemetry import trace
 
-            def update_otel_span(route_path, operation_id, scope):
-                span = trace.get_current_span()
-                if span.is_recording():
-                    span.set_attribute("http.route", route_path)
+            def log_route(route_path, operation_id, scope):
+                print(f"Routing {scope['method']} to {route_path}")
 
-            RoutingOperation.on_route_resolved(update_otel_span)
+            RoutingOperation.after_routing_resolution(log_route)
         """
-        cls._route_callbacks.append(callback)
+        cls._routing_hooks.append(hook)
 
     @classmethod
-    def clear_route_callbacks(cls) -> None:
-        """Clear all registered route callbacks. Useful for testing."""
-        cls._route_callbacks.clear()
+    def clear_routing_hooks(cls) -> None:
+        """Clear all registered routing hooks. Useful for testing."""
+        cls._routing_hooks.clear()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Attach operation to scope and pass it to the next app"""
@@ -100,14 +106,14 @@ class RoutingOperation:
             full_route_path = f"{api_base_path}{self.path}"
             original_scope["route"] = SimpleNamespace(path=full_route_path)
 
-            # Invoke registered callbacks for observability integration
-            for callback in self._route_callbacks:
+            # Invoke registered routing hooks
+            for hook in self._routing_hooks:
                 try:
-                    callback(full_route_path, self.operation_id, original_scope)
+                    hook(full_route_path, self.operation_id, original_scope)
                 except Exception:
-                    # Don't let callback errors break request processing
+                    # Don't let hook errors break request processing
                     logger.debug(
-                        "Route callback error for %s (ignored)", full_route_path,
+                        "Routing hook error for %s (ignored)", full_route_path,
                         exc_info=True,
                     )
 
