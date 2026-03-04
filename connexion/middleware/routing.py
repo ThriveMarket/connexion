@@ -1,5 +1,6 @@
 import typing as t
 from contextvars import ContextVar
+from types import SimpleNamespace
 
 import starlette.convertors
 from starlette.routing import Router
@@ -19,13 +20,19 @@ _scope: ContextVar[dict] = ContextVar("SCOPE")
 
 
 class RoutingOperation:
-    def __init__(self, operation_id: t.Optional[str], next_app: ASGIApp) -> None:
+    def __init__(
+        self,
+        operation_id: t.Optional[str],
+        next_app: ASGIApp,
+        path: t.Optional[str] = None,
+    ) -> None:
         self.operation_id = operation_id
         self.next_app = next_app
+        self.path = path
 
     @classmethod
     def from_operation(cls, operation: AbstractOperation, next_app: ASGIApp):
-        return cls(operation.operation_id, next_app)
+        return cls(operation.operation_id, next_app, path=operation.path)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Attach operation to scope and pass it to the next app"""
@@ -45,6 +52,15 @@ class RoutingOperation:
         connexion_routing.update(
             {"api_base_path": api_base_path, "operation_id": self.operation_id}
         )
+
+        # Set scope["route"] for OpenTelemetry instrumentation compatibility.
+        # OTEL's ASGI middleware reads scope["route"].path to populate http.route
+        # attribute on spans and metrics, which is required for proper transaction
+        # naming in APM tools like NewRelic.
+        if self.path is not None:
+            full_route_path = f"{api_base_path}{self.path}"
+            original_scope["route"] = SimpleNamespace(path=full_route_path)
+
         await self.next_app(original_scope, receive, send)
 
 
