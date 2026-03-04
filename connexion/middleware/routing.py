@@ -1,3 +1,4 @@
+import logging
 import typing as t
 from contextvars import ContextVar
 from types import SimpleNamespace
@@ -15,6 +16,8 @@ from connexion.middleware.abstract import (
 from connexion.operations import AbstractOperation
 from connexion.resolver import Resolver
 from connexion.spec import Specification
+
+logger = logging.getLogger(__name__)
 
 _scope: ContextVar[dict] = ContextVar("SCOPE")
 
@@ -103,7 +106,10 @@ class RoutingOperation:
                     callback(full_route_path, self.operation_id, original_scope)
                 except Exception:
                     # Don't let callback errors break request processing
-                    pass
+                    logger.debug(
+                        "Route callback error for %s (ignored)", full_route_path,
+                        exc_info=True,
+                    )
 
         await self.next_app(original_scope, receive, send)
 
