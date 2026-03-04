@@ -36,9 +36,44 @@ class TestMiddleware:
         await self.app(scope, receive, patched_send)
 
 
+class RoutePathMiddleware:
+    """Middleware to check if scope["route"].path is set for OTEL compatibility."""
+
+    __test__ = False
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        # Read scope["route"].path which OTEL ASGI middleware uses for http.route
+        route_obj = scope.get("route")
+        route_path = route_obj.path if route_obj else ""
+
+        async def patched_send(message):
+            if message["type"] != "http.response.start":
+                await send(message)
+                return
+
+            message.setdefault("headers", [])
+            headers = MutableHeaders(scope=message)
+            headers["x-route-path"] = route_path
+
+            await send(message)
+
+        await self.app(scope, receive, patched_send)
+
+
 @pytest.fixture(scope="session")
 def middleware_app(spec, app_class):
     middlewares = ConnexionMiddleware.default_middlewares + [TestMiddleware]
+    return build_app_from_fixture(
+        "simple", app_class=app_class, spec_file=spec, middlewares=middlewares
+    )
+
+
+@pytest.fixture(scope="session")
+def route_path_app(spec, app_class):
+    middlewares = ConnexionMiddleware.default_middlewares + [RoutePathMiddleware]
     return build_app_from_fixture(
         "simple", app_class=app_class, spec_file=spec, middlewares=middlewares
     )
@@ -52,6 +87,35 @@ def test_routing_middleware(middleware_app):
     assert (
         response.headers.get("operation_id") == "fakeapi.hello.post_greeting"
     ), response.status_code
+
+
+def test_route_path_for_otel(route_path_app):
+    """Test that scope['route'].path is set for OpenTelemetry instrumentation.
+
+    OTEL ASGI middleware reads scope["route"].path to populate the http.route
+    attribute on spans and metrics, which is required for proper transaction
+    naming in APM tools like NewRelic.
+    """
+    app_client = route_path_app.test_client()
+
+    response = app_client.post("/v1.0/greeting/robbe")
+
+    # The route path should be the OpenAPI path template with base path
+    assert (
+        response.headers.get("x-route-path") == "/v1.0/greeting/{name}"
+    ), f"Expected /v1.0/greeting/{{name}}, got {response.headers.get('x-route-path')}"
+
+
+def test_route_path_with_multiple_params(route_path_app):
+    """Test route path with multiple path parameters."""
+    app_client = route_path_app.test_client()
+
+    response = app_client.post("/v1.0/greeting/robbe/extra/path")
+
+    # Path with remainder parameter
+    assert (
+        response.headers.get("x-route-path") == "/v1.0/greeting/{name}/{remainder}"
+    ), f"Expected /v1.0/greeting/{{name}}/{{remainder}}, got {response.headers.get('x-route-path')}"
 
 
 def test_add_middleware(spec, app_class):
