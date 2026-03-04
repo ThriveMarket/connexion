@@ -101,7 +101,7 @@ def test_route_path_for_otel(route_path_app):
     response = app_client.post("/v1.0/greeting/robbe")
 
     # The route path should be the OpenAPI path template with base path
-    assert (
+    assert (  # nosec B101
         response.headers.get("x-route-path") == "/v1.0/greeting/{name}"
     ), f"Expected /v1.0/greeting/{{name}}, got {response.headers.get('x-route-path')}"
 
@@ -113,7 +113,7 @@ def test_route_path_with_multiple_params(route_path_app):
     response = app_client.post("/v1.0/greeting/robbe/extra/path")
 
     # Path with remainder parameter
-    assert (
+    assert (  # nosec B101
         response.headers.get("x-route-path") == "/v1.0/greeting/{name}/{remainder}"
     ), f"Expected /v1.0/greeting/{{name}}/{{remainder}}, got {response.headers.get('x-route-path')}"
 
@@ -199,9 +199,9 @@ class TestRouteResolvedCallback:
             app_client = app.test_client()
             app_client.post("/v1.0/greeting/robbe")
 
-            assert captured["route_path"] == "/v1.0/greeting/{name}"
-            assert captured["operation_id"] == "fakeapi.hello.post_greeting"
-            assert captured["method"] == "POST"
+            assert captured["route_path"] == "/v1.0/greeting/{name}"  # nosec B101
+            assert captured["operation_id"] == "fakeapi.hello.post_greeting"  # nosec B101
+            assert captured["method"] == "POST"  # nosec B101
         finally:
             RoutingOperation.clear_route_callbacks()
 
@@ -227,8 +227,8 @@ class TestRouteResolvedCallback:
             app_client = app.test_client()
             app_client.post("/v1.0/greeting/robbe")
 
-            assert call_count["first"] == 1
-            assert call_count["second"] == 1
+            assert call_count["first"] == 1  # nosec B101
+            assert call_count["second"] == 1  # nosec B101
         finally:
             RoutingOperation.clear_route_callbacks()
 
@@ -248,6 +248,6 @@ class TestRouteResolvedCallback:
             app_client = app.test_client()
             # Request should still succeed despite callback error
             response = app_client.post("/v1.0/greeting/robbe")
-            assert response.status_code == 200
+            assert response.status_code == 200  # nosec B101
         finally:
             RoutingOperation.clear_route_callbacks()
