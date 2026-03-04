@@ -200,7 +200,9 @@ class TestRoutingHooks:
             app_client.post("/v1.0/greeting/robbe")
 
             assert captured["route_path"] == "/v1.0/greeting/{name}"  # nosec B101
-            assert captured["operation_id"] == "fakeapi.hello.post_greeting"  # nosec B101
+            assert (
+                captured["operation_id"] == "fakeapi.hello.post_greeting"
+            )  # nosec B101
             assert captured["method"] == "POST"  # nosec B101
         finally:
             RoutingOperation.clear_routing_hooks()

@@ -113,7 +113,8 @@ class RoutingOperation:
                 except Exception:
                     # Don't let hook errors break request processing
                     logger.debug(
-                        "Routing hook error for %s (ignored)", full_route_path,
+                        "Routing hook error for %s (ignored)",
+                        full_route_path,
                         exc_info=True,
                     )
 
