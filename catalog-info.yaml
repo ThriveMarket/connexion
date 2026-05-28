@@ -1,0 +1,19 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: connexion
+  description: Forked Connexion Python web framework for spec-first API development
+  labels:
+    sox: "false"
+  annotations:
+    github.com/project-slug: ThriveMarket/connexion
+    compliance/sox-justification: "Open-source Python web framework library used for spec-first API development. Does not process financial transactions, maintain financial records, or affect financial reporting."
+    trellis/provision-k8s: "false"
+    trellis/tf-trellis-accounts: "false"
+    trellis/tf-main-account: "false"
+    trellis/tf-tools-account: "false"
+    trellis/tf-reliability: "false"
+spec:
+  type: library
+  lifecycle: experimental
+  owner: group:okta/backend-core
